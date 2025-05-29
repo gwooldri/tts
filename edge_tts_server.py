@@ -262,12 +262,17 @@ if __name__ == '__main__':
     print("  GET  /voices/search - Search voices")
     print("  POST /tts        - Text to speech (returns audio file)")
     print("  POST /tts/stream - Text to speech (returns base64)")
+    print("  GET  /endpoint   - Get Edge TTS endpoint info")
     print()
+    
+    # Get port from environment variable (Railway sets this automatically)
+    port = int(os.environ.get('PORT', 8080))
+    print(f"Starting server on port {port}")
     
     # Run the server
     app.run(
         host='0.0.0.0',  # Listen on all interfaces
-        port=5000,
-        debug=True,
+        port=port,
+        debug=False,  # Set to False for production
         threaded=True
     )
