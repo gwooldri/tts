@@ -73,8 +73,15 @@ def health_check():
         'status': 'healthy',
         'service': 'Edge TTS API Server',
         'timestamp': datetime.now().isoformat(),
-        'edge_tts_endpoint': EDGE_TTS_API_ENDPOINT
+        'edge_tts_endpoint': EDGE_TTS_API_ENDPOINT,
+        'port': os.environ.get('PORT', 'not set'),
+        'railway': 'deployed'
     })
+
+@app.route('/test', methods=['GET'])
+def test_endpoint():
+    """Simple test endpoint for Railway"""
+    return "Railway deployment working!"
 
 @app.route('/voices', methods=['GET'])
 def get_voices():
