@@ -1,1 +1,1 @@
-web: python test_server.py
+web: python edge_tts_server.py
