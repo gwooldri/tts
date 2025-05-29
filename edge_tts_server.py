@@ -74,7 +74,7 @@ def health_check():
         'service': 'Edge TTS API Server',
         'timestamp': datetime.now().isoformat(),
         'edge_tts_endpoint': EDGE_TTS_API_ENDPOINT,
-        'port': os.environ.get('PORT', 'not set'),
+        'port': int(os.environ.get('PORT', 8080)),
         'railway': 'deployed'
     })
 
