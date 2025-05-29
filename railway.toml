@@ -1,0 +1,11 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "gunicorn --bind 0.0.0.0:$PORT edge_tts_server:app"
+healthcheckPath = "/"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+
+[env]
+PORT = { default = "8080" }
