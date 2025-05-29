@@ -255,24 +255,29 @@ def get_edge_endpoint():
     })
 
 if __name__ == '__main__':
-    print("Starting Edge TTS API Server...")
+    # Railway-specific configuration
+    port = int(os.environ.get('PORT', 8080))
+    host = '0.0.0.0'
+    
+    print(f"Starting Edge TTS API Server on {host}:{port}")
     print("Available endpoints:")
     print("  GET  /           - Health check")
-    print("  GET  /voices     - List all voices")
+    print("  GET  /voices     - List all voices") 
     print("  GET  /voices/search - Search voices")
     print("  POST /tts        - Text to speech (returns audio file)")
     print("  POST /tts/stream - Text to speech (returns base64)")
     print("  GET  /endpoint   - Get Edge TTS endpoint info")
     print()
     
-    # Get port from environment variable (Railway sets this automatically)
-    port = int(os.environ.get('PORT', 8080))
-    print(f"Starting server on port {port}")
-    
-    # Run the server
-    app.run(
-        host='0.0.0.0',  # Listen on all interfaces
-        port=port,
-        debug=False,  # Set to False for production
-        threaded=True
-    )
+    try:
+        # Use Flask's built-in server for Railway
+        app.run(
+            host=host,
+            port=port,
+            debug=False,
+            threaded=True,
+            use_reloader=False  # Important for Railway
+        )
+    except Exception as e:
+        print(f"Failed to start server: {e}")
+        raise
