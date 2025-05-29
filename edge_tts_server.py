@@ -69,26 +69,19 @@ tts_server = EdgeTTSServer()
 @app.route('/', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    try:
-        logger.info("Health check endpoint called")
-        response_data = {
-            'status': 'healthy',
-            'service': 'Edge TTS API Server',
-            'timestamp': datetime.now().isoformat(),
-            'port': os.environ.get('PORT', 'not set'),
-            'railway': True
-        }
-        logger.info(f"Health check response: {response_data}")
-        return jsonify(response_data), 200
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    return jsonify({
+        'status': 'healthy',
+        'service': 'Edge TTS API Server',
+        'timestamp': datetime.now().isoformat(),
+        'edge_tts_endpoint': EDGE_TTS_API_ENDPOINT,
+        'port': os.environ.get('PORT', 'not set'),
+        'railway': 'deployed'
+    })
 
 @app.route('/test', methods=['GET'])
 def test_endpoint():
     """Simple test endpoint for Railway"""
-    logger.info("Test endpoint called")
-    return "Railway deployment working!", 200
+    return "Railway deployment working!"
 
 @app.route('/voices', methods=['GET'])
 def get_voices():
