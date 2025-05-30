@@ -1,0 +1,10 @@
+torch>=1.13.0
+torchaudio
+numpy
+librosa
+scipy
+soundfile
+pydub
+flask-cors
+requests
+gitpython
