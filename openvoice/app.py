@@ -1,10 +1,24 @@
-# Add these imports to your existing backend file
-from flask import request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from voice_service import voice_cloner
 import os
 
-# Add these new routes to your existing Flask app
+# Create Flask app
+app = Flask(__name__)
+CORS(app)  # Enable CORS for frontend requests
+
+# Basic health check route
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({
+        'status': 'Voice cloning service is running!',
+        'endpoints': [
+            '/api/voice/test',
+            '/api/voice/clone'
+        ]
+    })
+
 @app.route('/api/voice/clone', methods=['POST'])
 def clone_voice_api():
     try:
@@ -44,3 +58,8 @@ def test_voice_service():
         'openvoice_ready': voice_cloner.openvoice_ready,
         'device': voice_cloner.device
     })
+
+if __name__ == '__main__':
+    # Railway sets the PORT environment variable
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
