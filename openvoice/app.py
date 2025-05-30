@@ -1,90 +1,109 @@
-from flask import Flask, request, jsonify, send_static_file
+from flask import Flask, request, jsonify, send_file, send_static_file
+from werkzeug.utils import secure_filename
+from voice_service import voice_cloner
 import os
-import soundfile as sf
-import librosa
-import torch
-from openvoice import seextractor
-from openvoice.api import ToneColorConverter
 import logging
 
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
+# Set up logging to a file and console
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
 
 app = Flask(__name__)
 app.config['STATIC_FOLDER'] = 'static'
 app.config['TEMP_AUDIO_FOLDER'] = 'temp_audio'
 
-# Ensure temp_audio and static folders exist
+# Ensure static and temp_audio folders exist
 os.makedirs(app.config['STATIC_FOLDER'], exist_ok=True)
 os.makedirs(app.config['TEMP_AUDIO_FOLDER'], exist_ok=True)
 
-# Paths to OpenVoice model checkpoints (adjust as per your setup)
-base_speaker_model = "checkpoints/base_speaker.pth"
-tone_color_converter_model = "checkpoints/converter.pth"
-
-# Initialize OpenVoice models
-device = "cuda" if torch.cuda.is_available() else "cpu"
-tone_color_converter = ToneColorConverter(tone_color_converter_model, device=device)
+# Verify voice_cloner initialization
+try:
+    if not voice_cloner.openvoice_ready:
+        raise RuntimeError("OpenVoice is not ready")
+    logging.info(f"Voice cloning service initialized. Device: {voice_cloner.device}")
+except Exception as e:
+    logging.error(f"Failed to initialize voice_cloner: {str(e)}")
+    raise RuntimeError(f"Voice cloning service initialization failed: {str(e)}")
 
 @app.route('/')
 def index():
-    return send_static_file('code.html')
-
-@app.route('/api/voice/test', methods=['POST'])
-def voice_test():
     try:
-        # Get text input from the form
-        text = request.form.get('text', 'Hello, this is a test voice synthesis.')
+        return send_static_file('code.html')
+    except Exception as e:
+        logging.error(f"Error serving code.html: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to serve the frontend page'
+        }), 500
+
+@app.route('/api/voice/clone', methods=['POST'])
+def clone_voice_api():
+    try:
+        text = request.form.get('text')
+        if not text:
+            logging.warning("Text is required but not provided")
+            return jsonify({'error': 'Text is required'}), 400
         
-        # Check if an audio file was uploaded
         if 'audio' not in request.files:
-            return jsonify({
-                'status': 'error',
-                'message': 'No audio file provided'
-            }), 400
+            logging.warning("Audio file is required but not provided")
+            return jsonify({'error': 'Audio file is required'}), 400
         
         audio_file = request.files['audio']
         if audio_file.filename == '':
-            return jsonify({
-                'status': 'error',
-                'message': 'No audio file selected'
-            }), 400
-
-        # Save the uploaded audio file temporarily
-        reference_audio_path = os.path.join(app.config['TEMP_AUDIO_FOLDER'], 'uploaded_reference.wav')
-        audio_file.save(reference_audio_path)
-
-        # Extract tone color from the uploaded reference audio
-        se, _ = seextractor.extract(reference_audio_path, device=device)
-
-        # Generate audio using OpenVoice
-        output_file = os.path.join(app.config['STATIC_FOLDER'], 'output.wav')
-        audio, sr = tone_color_converter.convert(
-            text=text,
-            source_se=se,
-            target_se=se,  # Using same speaker for simplicity
-            output_path=output_file
+            logging.warning("No audio file selected")
+            return jsonify({'error': 'No audio file selected'}), 400
+        
+        # Process the audio
+        reference_path = voice_cloner.save_uploaded_audio(audio_file)
+        logging.debug(f"Uploaded audio saved to: {reference_path}")
+        
+        output_path = voice_cloner.clone_voice(text, reference_path)
+        logging.debug(f"Cloned audio saved to: {output_path}")
+        
+        # Cleanup
+        voice_cloner.cleanup_file(reference_path)
+        logging.debug("Temporary reference audio file cleaned up")
+        
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name='cloned_voice.wav',
+            mimetype='audio/wav'
         )
-
-        # Save the generated audio
-        sf.write(output_file, audio, sr)
-
-        # Clean up the temporary reference audio file (optional)
-        os.remove(reference_audio_path)
-
-        # Return response
-        return jsonify({
-            'status': 'success',
-            'message': 'Audio generated successfully',
-            'audio_url': f'/{output_file}'
-        })
-
+        
     except Exception as e:
-        logging.error(f"Error in voice_test: {str(e)}")
+        logging.error(f"Voice cloning error: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/voice/test', methods=['GET'])
+def test_voice_service():
+    try:
+        return jsonify({
+            'message': 'Voice cloning service is running!',
+            'openvoice_ready': voice_cloner.openvoice_ready,
+            'device': voice_cloner.device
+        })
+    except Exception as e:
+        logging.error(f"Error in test_voice_service: {str(e)}", exc_info=True)
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': f'Failed to access voice service: {str(e)}'
         }), 500
 
+# Global error handler to ensure JSON responses
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logging.error(f"Unhandled exception: {str(e)}", exc_info=True)
+    return jsonify({
+        'status': 'error',
+        'message': f'Server error: {str(e)}'
+    }), 500
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)  # Disable debug mode in production
