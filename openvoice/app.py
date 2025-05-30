@@ -1,46 +1,67 @@
-# Add these imports to your existing backend file
-from flask import request, jsonify, send_file
-from werkzeug.utils import secure_filename
-from voice_service import voice_cloner
+from flask import Flask, request, jsonify, send_static_file
 import os
+import soundfile as sf
+import librosa
+import torch
+from openvoice import seextractor
+from openvoice.api import ToneColorConverter
+import logging
 
-# Add these new routes to your existing Flask app
-@app.route('/api/voice/clone', methods=['POST'])
-def clone_voice_api():
-    try:
-        text = request.form.get('text')
-        if not text:
-            return jsonify({'error': 'Text is required'}), 400
-        
-        if 'audio' not in request.files:
-            return jsonify({'error': 'Audio file is required'}), 400
-        
-        audio_file = request.files['audio']
-        if audio_file.filename == '':
-            return jsonify({'error': 'No audio file selected'}), 400
-        
-        # Process the audio
-        reference_path = voice_cloner.save_uploaded_audio(audio_file)
-        output_path = voice_cloner.clone_voice(text, reference_path)
-        
-        # Cleanup
-        voice_cloner.cleanup_file(reference_path)
-        
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name='cloned_voice.wav',
-            mimetype='audio/wav'
-        )
-        
-    except Exception as e:
-        print(f"Voice cloning error: {e}")
-        return jsonify({'error': str(e)}), 500
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+
+app = Flask(__name__)
+app.config['STATIC_FOLDER'] = 'static'
+
+# Paths to OpenVoice model checkpoints (adjust as per your setup)
+base_speaker_model = "checkpoints/base_speaker.pth"
+tone_color_converter_model = "checkpoints/converter.pth"
+
+# Initialize OpenVoice models
+device = "cuda" if torch.cuda.is_available() else "cpu"
+tone_color_converter = ToneColorConverter(tone_color_converter_model, device=device)
+
+# Reference speaker audio
+reference_speaker_audio = "temp_audio/reference_speaker.wav"
+
+@app.route('/')
+def index():
+    return send_static_file('code.html')
 
 @app.route('/api/voice/test', methods=['GET'])
-def test_voice_service():
-    return jsonify({
-        'message': 'Voice cloning service is running!',
-        'openvoice_ready': voice_cloner.openvoice_ready,
-        'device': voice_cloner.device
-    })
+def voice_test():
+    try:
+        # Get query parameters
+        text = request.args.get('text', 'Hello, this is a test voice synthesis.')
+        output_file = os.path.join(app.config['STATIC_FOLDER'], 'output.wav')
+
+        # Extract tone color from reference speaker
+        se, _ = seextractor.extract(reference_speaker_audio, device=device)
+
+        # Generate audio using OpenVoice
+        audio, sr = tone_color_converter.convert(
+            text=text,
+            source_se=se,
+            target_se=se,
+            output_path=output_file
+        )
+
+        # Save the generated audio
+        sf.write(output_file, audio, sr)
+
+        # Return response
+        return jsonify({
+            'status': 'success',
+            'message': 'Audio generated successfully',
+            'audio_url': f'/{output_file}'
+        })
+
+    except Exception as e:
+        logging.error(f"Error in voice_test: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
