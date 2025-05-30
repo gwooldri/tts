@@ -1,0 +1,175 @@
+<!-- Voice Cloning Component -->
+<div
+  class="voice-cloning-container"
+  style="
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+  "
+>
+  <h2>🎤 Voice Cloning</h2>
+
+  <div class="recording-section" style="margin-bottom: 20px">
+    <h3>Record Reference Voice</h3>
+    <button id="startRecord" onclick="startRecording()" class="btn btn-primary">
+      Start Recording
+    </button>
+    <button
+      id="stopRecord"
+      onclick="stopRecording()"
+      disabled
+      class="btn btn-secondary"
+    >
+      Stop Recording
+    </button>
+    <div id="recordingStatus" class="status-text"></div>
+    <audio
+      id="recordedAudio"
+      controls
+      style="display: none; width: 100%; margin-top: 10px"
+    ></audio>
+  </div>
+
+  <div class="text-section" style="margin-bottom: 20px">
+    <h3>Text to Speak</h3>
+    <textarea
+      id="textToSpeak"
+      placeholder="Enter text to convert to speech..."
+      style="
+        width: 100%;
+        height: 100px;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      "
+    ></textarea>
+  </div>
+
+  <div class="clone-section">
+    <button
+      id="cloneVoice"
+      onclick="cloneVoice()"
+      disabled
+      class="btn btn-success"
+    >
+      Clone Voice
+    </button>
+    <div id="cloneStatus" class="status-text"></div>
+    <audio
+      id="clonedAudio"
+      controls
+      style="display: none; width: 100%; margin-top: 10px"
+    ></audio>
+  </div>
+</div>
+
+<script>
+  // Voice cloning functionality
+  let mediaRecorder;
+  let recordedChunks = [];
+  let recordedAudioBlob = null;
+
+  // Replace this with your actual Railway deployment URL
+  const API_BASE_URL = "https://your-app-name.railway.app";
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      recordedChunks = [];
+
+      mediaRecorder.ondataavailable = function (event) {
+        if (event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = function () {
+        recordedAudioBlob = new Blob(recordedChunks, { type: "audio/wav" });
+        const audioUrl = URL.createObjectURL(recordedAudioBlob);
+
+        document.getElementById("recordedAudio").src = audioUrl;
+        document.getElementById("recordedAudio").style.display = "block";
+        document.getElementById("cloneVoice").disabled = false;
+      };
+
+      mediaRecorder.start();
+      document.getElementById("startRecord").disabled = true;
+      document.getElementById("stopRecord").disabled = false;
+      document.getElementById("recordingStatus").textContent = "Recording...";
+    } catch (error) {
+      alert("Microphone access denied: " + error.message);
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+
+      document.getElementById("startRecord").disabled = false;
+      document.getElementById("stopRecord").disabled = true;
+      document.getElementById("recordingStatus").textContent =
+        "Recording complete!";
+    }
+  }
+
+  async function cloneVoice() {
+    const text = document.getElementById("textToSpeak").value.trim();
+
+    if (!text) {
+      alert("Please enter text to speak");
+      return;
+    }
+
+    if (!recordedAudioBlob) {
+      alert("Please record your voice first");
+      return;
+    }
+
+    document.getElementById("cloneStatus").textContent = "Cloning voice...";
+    document.getElementById("cloneVoice").disabled = true;
+
+    try {
+      const formData = new FormData();
+      formData.append("text", text);
+      formData.append("audio", recordedAudioBlob, "recording.wav");
+
+      const response = await fetch(`${API_BASE_URL}/api/voice/clone`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        document.getElementById("clonedAudio").src = audioUrl;
+        document.getElementById("clonedAudio").style.display = "block";
+        document.getElementById("cloneStatus").textContent =
+          "Voice cloning complete!";
+      } else {
+        const error = await response.json();
+        throw new Error(error.error);
+      }
+    } catch (error) {
+      alert("Voice cloning failed: " + error.message);
+      document.getElementById("cloneStatus").textContent = "Error occurred";
+    } finally {
+      document.getElementById("cloneVoice").disabled = false;
+    }
+  }
+
+  // Test connection on load
+  window.addEventListener("load", async function () {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/voice/test`);
+      const data = await response.json();
+      console.log("Voice service status:", data);
+    } catch (error) {
+      console.error("Could not connect to voice service:", error);
+    }
+  });
+</script>
